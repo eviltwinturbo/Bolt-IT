@@ -1,0 +1,316 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-31",
+  "description": "Rules engine configuration for Bolt IT triage system. Defines precedence, thresholds, and routing logic.",
+  "rules_precedence": [
+    {
+      "priority": 1,
+      "rule_type": "explicit_rule",
+      "description": "Explicit rules defined by administrators take highest precedence",
+      "enabled": true
+    },
+    {
+      "priority": 2,
+      "rule_type": "duplicate_detection",
+      "description": "Duplicate detection with high similarity overrides classification",
+      "enabled": true,
+      "threshold": 0.90
+    },
+    {
+      "priority": 3,
+      "rule_type": "sensitive_content",
+      "description": "Sensitive content keywords trigger secure routing regardless of classification",
+      "enabled": true
+    },
+    {
+      "priority": 4,
+      "rule_type": "ml_classification",
+      "description": "ML model classification results",
+      "enabled": true,
+      "min_confidence": 0.70
+    },
+    {
+      "priority": 5,
+      "rule_type": "fallback",
+      "description": "Default fallback when no rules match or confidence too low",
+      "enabled": true
+    }
+  ],
+  "thresholds": {
+    "auto_apply": {
+      "enabled": false,
+      "confidence_threshold": 0.92,
+      "similarity_threshold": 0.90,
+      "max_per_asset_per_day": 5,
+      "require_both": true,
+      "description": "Conservative thresholds for automatic resolution application"
+    },
+    "auto_route": {
+      "enabled": true,
+      "confidence_threshold": 0.80,
+      "description": "Confidence required for automatic team routing"
+    },
+    "human_review": {
+      "enabled": true,
+      "confidence_threshold": 0.70,
+      "description": "Tickets below this confidence require human review"
+    },
+    "duplicate_detection": {
+      "enabled": true,
+      "similarity_threshold": 0.85,
+      "max_similar_tickets": 5,
+      "description": "Threshold for marking tickets as potential duplicates"
+    },
+    "kb_auto_create": {
+      "enabled": true,
+      "min_resolution_confidence": 0.88,
+      "require_tech_approval": true,
+      "description": "Threshold for automatic KB entry creation"
+    }
+  },
+  "explicit_rules": [
+    {
+      "rule_id": "emergency_keywords",
+      "enabled": true,
+      "trigger": "keyword_match",
+      "keywords": [
+        "emergency",
+        "critical",
+        "outage",
+        "down",
+        "production down",
+        "urgent",
+        "data breach",
+        "security incident"
+      ],
+      "action": {
+        "set_priority": "critical",
+        "set_category": "incident",
+        "route_to": "on-call",
+        "notify": ["oncall-engineer", "incident-manager"],
+        "skip_auto_apply": true
+      },
+      "description": "Emergency keywords trigger critical priority and immediate escalation"
+    },
+    {
+      "rule_id": "password_reset",
+      "enabled": true,
+      "trigger": "keyword_match",
+      "keywords": [
+        "password reset",
+        "forgot password",
+        "can't login",
+        "locked out",
+        "reset my password"
+      ],
+      "action": {
+        "set_category": "access",
+        "set_priority": "high",
+        "suggested_fix": "Send password reset link to verified email address",
+        "auto_apply_if_verified": true
+      },
+      "description": "Password reset requests can be auto-applied with email verification"
+    },
+    {
+      "rule_id": "hardware_failure",
+      "enabled": true,
+      "trigger": "keyword_match",
+      "keywords": [
+        "laptop broken",
+        "screen cracked",
+        "hardware failure",
+        "device not working",
+        "keyboard broken"
+      ],
+      "action": {
+        "set_category": "hardware",
+        "set_priority": "medium",
+        "route_to": "hardware-team",
+        "create_shipping_label": false
+      },
+      "description": "Hardware issues route to hardware support team"
+    },
+    {
+      "rule_id": "software_install",
+      "enabled": true,
+      "trigger": "keyword_match",
+      "keywords": [
+        "install software",
+        "need software",
+        "software request",
+        "download",
+        "access to application"
+      ],
+      "action": {
+        "set_category": "software",
+        "set_priority": "low",
+        "route_to": "software-provisioning",
+        "require_manager_approval": true
+      },
+      "description": "Software requests require manager approval"
+    },
+    {
+      "rule_id": "vip_user",
+      "enabled": true,
+      "trigger": "user_attribute",
+      "attribute": "is_vip",
+      "action": {
+        "escalate_priority": true,
+        "route_to": "vip-support",
+        "sla_minutes": 30,
+        "notify": ["vip-support-team"]
+      },
+      "description": "VIP users get prioritized support"
+    }
+  ],
+  "sensitive_content_rules": {
+    "enabled": true,
+    "keywords": [
+      "ssn",
+      "social security",
+      "credit card",
+      "bank account",
+      "password",
+      "api key",
+      "secret",
+      "confidential",
+      "proprietary",
+      "classified",
+      "harassment",
+      "discrimination",
+      "legal matter"
+    ],
+    "action": {
+      "redact_before_storage": true,
+      "route_to": "secure-queue",
+      "require_encryption": true,
+      "skip_auto_apply": true,
+      "log_access": true,
+      "description": "Sensitive content triggers secure handling and audit logging"
+    }
+  },
+  "category_routing": {
+    "hardware": {
+      "team": "hardware-support",
+      "sla_hours": 48,
+      "auto_assign": true
+    },
+    "software": {
+      "team": "software-support",
+      "sla_hours": 24,
+      "auto_assign": true
+    },
+    "access": {
+      "team": "access-management",
+      "sla_hours": 4,
+      "auto_assign": true,
+      "requires_verification": true
+    },
+    "network": {
+      "team": "network-operations",
+      "sla_hours": 12,
+      "auto_assign": true
+    },
+    "incident": {
+      "team": "incident-response",
+      "sla_minutes": 15,
+      "auto_assign": true,
+      "escalate_immediately": true
+    },
+    "general": {
+      "team": "tier1-support",
+      "sla_hours": 72,
+      "auto_assign": false
+    }
+  },
+  "priority_sla": {
+    "critical": {
+      "response_minutes": 15,
+      "resolution_hours": 4,
+      "escalation_minutes": 30,
+      "notify_on_breach": ["manager", "director"]
+    },
+    "high": {
+      "response_hours": 2,
+      "resolution_hours": 24,
+      "escalation_hours": 4,
+      "notify_on_breach": ["manager"]
+    },
+    "medium": {
+      "response_hours": 8,
+      "resolution_hours": 72,
+      "escalation_hours": 24,
+      "notify_on_breach": ["team-lead"]
+    },
+    "low": {
+      "response_hours": 24,
+      "resolution_hours": 168,
+      "escalation_hours": 72,
+      "notify_on_breach": []
+    }
+  },
+  "auto_apply_safeguards": {
+    "enabled": true,
+    "shadow_mode": false,
+    "shadow_mode_duration_days": 30,
+    "rate_limits": {
+      "max_per_asset_per_day": 5,
+      "max_per_category_per_hour": 20,
+      "max_total_per_hour": 100
+    },
+    "excluded_categories": [
+      "incident",
+      "security",
+      "legal"
+    ],
+    "excluded_priorities": [
+      "critical"
+    ],
+    "require_similar_ticket": true,
+    "require_positive_feedback": false,
+    "rollback_on_negative_feedback": true,
+    "audit_all_actions": true,
+    "description": "Conservative safeguards prevent runaway auto-apply"
+  },
+  "explainability": {
+    "enabled": true,
+    "include_in_response": true,
+    "top_features": 3,
+    "include_confidence_breakdown": true,
+    "include_similar_tickets": true,
+    "max_similar_tickets": 3,
+    "description": "All classification decisions include explainability data"
+  },
+  "feature_flags": {
+    "enable_auto_apply": false,
+    "enable_kb_generation": true,
+    "enable_duplicate_detection": true,
+    "enable_sentiment_analysis": false,
+    "enable_custom_models": false,
+    "enable_multi_language": false,
+    "enable_chat_interface": false,
+    "description": "Feature flags for gradual rollout and A/B testing"
+  },
+  "tenant_overrides": {
+    "enabled": true,
+    "allow_custom_rules": true,
+    "allow_custom_thresholds": true,
+    "allow_custom_routing": true,
+    "description": "Tenants can override rules with custom configurations"
+  },
+  "audit_and_compliance": {
+    "log_all_rule_evaluations": true,
+    "log_all_auto_actions": true,
+    "immutable_audit_trail": true,
+    "retention_days": 365,
+    "description": "Complete audit trail for all rule-based decisions"
+  },
+  "notes": [
+    "Rules are evaluated in priority order (1 = highest)",
+    "First matching rule wins (unless override specified)",
+    "All auto-apply actions are logged in immutable audit table",
+    "Rules can be overridden per-tenant with custom configurations",
+    "Shadow mode allows testing rules without taking actions",
+    "Emergency override available via admin API to disable auto-apply globally"
+  ]
+}

@@ -1,0 +1,367 @@
+#cloud-config
+# Bolt IT EC2 Bootstrap Script
+# This script runs on first boot to set up the EC2 instance for Bolt IT
+
+# System packages to install
+packages:
+  - docker.io
+  - docker-compose-v2
+  - awscli
+  - jq
+  - curl
+  - wget
+  - git
+  - htop
+  - vim
+  - postgresql-client
+  - python3-pip
+  - unzip
+
+# Create necessary directories
+runcmd:
+  # Update system
+  - apt-get update -y
+  - apt-get upgrade -y
+
+  # Install Docker if not already installed
+  - |
+    if ! command -v docker &> /dev/null; then
+      curl -fsSL https://get.docker.com -o get-docker.sh
+      sh get-docker.sh
+      rm get-docker.sh
+    fi
+
+  # Add ubuntu user to docker group
+  - usermod -aG docker ubuntu
+
+  # Install Docker Compose V2 plugin
+  - mkdir -p /usr/local/lib/docker/cli-plugins
+  - curl -SL https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  - chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  - ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/bin/docker-compose
+
+  # Configure Docker daemon
+  - mkdir -p /etc/docker
+  - |
+    cat > /etc/docker/daemon.json <<EOF
+    {
+      "log-driver": "json-file",
+      "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+      },
+      "live-restore": true,
+      "userland-proxy": false,
+      "default-ulimits": {
+        "nofile": {
+          "Name": "nofile",
+          "Hard": 64000,
+          "Soft": 64000
+        }
+      }
+    }
+    EOF
+
+  # Restart Docker to apply config
+  - systemctl restart docker
+  - systemctl enable docker
+
+  # Create Bolt IT application directory
+  - mkdir -p /opt/boltit/deploy
+  - mkdir -p /opt/boltit/logs
+  - mkdir -p /opt/boltit/models
+  - mkdir -p /opt/boltit/backups
+  - chown -R ubuntu:ubuntu /opt/boltit
+
+  # Install AWS CLI v2 (if not latest)
+  - |
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    ./aws/install --update
+    rm -rf aws awscliv2.zip
+
+  # Configure AWS CLI region
+  - aws configure set default.region ${aws_region}
+
+  # Fetch secrets from Secrets Manager and create .env file
+  - |
+    DB_SECRET=$(aws secretsmanager get-secret-value --secret-id ${secret_db_name} --query SecretString --output text)
+    DB_PASSWORD=$(echo $DB_SECRET | jq -r '.password')
+    
+    API_SECRET=$(aws secretsmanager get-secret-value --secret-id ${secret_api_key_name} --query SecretString --output text)
+    API_MASTER_KEY=$(echo $API_SECRET | jq -r '.master_key')
+    
+    # Generate additional secrets
+    REDIS_PASSWORD=$(openssl rand -base64 32)
+    API_SECRET_KEY=$(openssl rand -hex 64)
+    
+    # Create .env file
+    cat > /opt/boltit/deploy/.env <<EOF
+    ENVIRONMENT=${environment}
+    AWS_REGION=${aws_region}
+    
+    S3_ARTIFACTS_BUCKET=${s3_artifacts_bucket}
+    
+    ECR_API_URI=${ecr_api_uri}:latest
+    ECR_MODEL_URI=${ecr_model_uri}:latest
+    ECR_WORKER_URI=${ecr_worker_uri}:latest
+    
+    DB_PASSWORD=$DB_PASSWORD
+    REDIS_PASSWORD=$REDIS_PASSWORD
+    API_SECRET_KEY=$API_SECRET_KEY
+    
+    LOG_LEVEL=INFO
+    ENABLE_METRICS=true
+    ENABLE_AUDIT_LOG=true
+    AUTO_APPLY_ENABLED=false
+    
+    CLOUDWATCH_LOG_GROUP_API=/aws/boltit/${environment}/api
+    CLOUDWATCH_LOG_GROUP_MODEL=/aws/boltit/${environment}/model
+    CLOUDWATCH_LOG_GROUP_WORKER=/aws/boltit/${environment}/worker
+    EOF
+    
+    chmod 600 /opt/boltit/deploy/.env
+    chown ubuntu:ubuntu /opt/boltit/deploy/.env
+
+  # Log in to ECR
+  - |
+    aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin ${ecr_api_uri} || true
+
+  # Download deployment files from S3 or git (if available)
+  # In pilot, we'll copy these manually or via CI/CD
+  # For now, create placeholder files
+  
+  # Create docker-compose.yml placeholder (will be replaced by CI/CD)
+  - touch /opt/boltit/deploy/docker-compose.yml
+  - chown ubuntu:ubuntu /opt/boltit/deploy/docker-compose.yml
+
+  # Install CloudWatch agent for metrics and logs
+  - wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+  - dpkg -i amazon-cloudwatch-agent.deb
+  - rm amazon-cloudwatch-agent.deb
+
+  # Configure CloudWatch agent
+  - |
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
+    {
+      "agent": {
+        "metrics_collection_interval": 60,
+        "run_as_user": "cwagent"
+      },
+      "metrics": {
+        "namespace": "BoltIT/${environment}",
+        "metrics_collected": {
+          "cpu": {
+            "measurement": [
+              {"name": "cpu_usage_idle", "rename": "CPU_IDLE", "unit": "Percent"},
+              {"name": "cpu_usage_iowait", "rename": "CPU_IOWAIT", "unit": "Percent"}
+            ],
+            "metrics_collection_interval": 60,
+            "totalcpu": false
+          },
+          "disk": {
+            "measurement": [
+              {"name": "used_percent", "rename": "DISK_USED", "unit": "Percent"}
+            ],
+            "metrics_collection_interval": 60,
+            "resources": ["*"]
+          },
+          "mem": {
+            "measurement": [
+              {"name": "mem_used_percent", "rename": "MEM_USED", "unit": "Percent"}
+            ],
+            "metrics_collection_interval": 60
+          }
+        }
+      },
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/opt/boltit/logs/*.log",
+                "log_group_name": "/aws/boltit/${environment}/system",
+                "log_stream_name": "{instance_id}"
+              }
+            ]
+          }
+        }
+      }
+    }
+    EOF
+
+  # Start CloudWatch agent
+  - /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+  # Create systemd service for Bolt IT
+  - |
+    cat > /etc/systemd/system/boltit.service <<EOF
+    [Unit]
+    Description=Bolt IT Docker Compose Service
+    Requires=docker.service
+    After=docker.service network-online.target
+    Wants=network-online.target
+    
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    WorkingDirectory=/opt/boltit/deploy
+    User=root
+    Group=root
+    
+    # Load environment variables
+    EnvironmentFile=/opt/boltit/deploy/.env
+    
+    # Pull latest images before starting
+    ExecStartPre=/usr/bin/docker compose pull --quiet
+    
+    # Start all services
+    ExecStart=/usr/bin/docker compose up -d
+    
+    # Stop all services
+    ExecStop=/usr/bin/docker compose down
+    
+    # Restart on failure
+    Restart=on-failure
+    RestartSec=10s
+    
+    # Logging
+    StandardOutput=journal
+    StandardError=journal
+    SyslogIdentifier=boltit
+    
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+  # Reload systemd and enable Bolt IT service (don't start yet - need docker-compose.yml)
+  - systemctl daemon-reload
+  - systemctl enable boltit.service
+
+  # Set up log rotation for Bolt IT logs
+  - |
+    cat > /etc/logrotate.d/boltit <<EOF
+    /opt/boltit/logs/*.log {
+        daily
+        rotate 7
+        compress
+        delaycompress
+        notifempty
+        create 0640 ubuntu ubuntu
+        sharedscripts
+        postrotate
+            docker compose -f /opt/boltit/deploy/docker-compose.yml restart api model worker 2>/dev/null || true
+        endscript
+    }
+    EOF
+
+  # Set up cron job for database backups
+  - |
+    cat > /opt/boltit/backup-db.sh <<'EOF'
+    #!/bin/bash
+    set -e
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="/opt/boltit/backups/boltit_backup_$TIMESTAMP.sql"
+    
+    # Backup database
+    docker compose -f /opt/boltit/deploy/docker-compose.yml exec -T postgres \
+      pg_dump -U boltit_admin boltit > "$BACKUP_FILE"
+    
+    # Compress backup
+    gzip "$BACKUP_FILE"
+    
+    # Upload to S3
+    aws s3 cp "$BACKUP_FILE.gz" "s3://${s3_artifacts_bucket}/backups/" --server-side-encryption aws:kms
+    
+    # Clean up local backups older than 7 days
+    find /opt/boltit/backups/ -name "*.sql.gz" -mtime +7 -delete
+    
+    echo "Database backup completed: $BACKUP_FILE.gz"
+    EOF
+    
+    chmod +x /opt/boltit/backup-db.sh
+    chown ubuntu:ubuntu /opt/boltit/backup-db.sh
+
+  # Add backup cron job (daily at 3 AM)
+  - echo "0 3 * * * ubuntu /opt/boltit/backup-db.sh >> /opt/boltit/logs/backup.log 2>&1" >> /etc/crontab
+
+  # Configure system limits for production workloads
+  - |
+    cat >> /etc/security/limits.conf <<EOF
+    *               soft    nofile          64000
+    *               hard    nofile          64000
+    root            soft    nofile          64000
+    root            hard    nofile          64000
+    EOF
+
+  # Configure sysctl for better network performance
+  - |
+    cat >> /etc/sysctl.conf <<EOF
+    # Bolt IT performance tuning
+    net.core.somaxconn = 1024
+    net.ipv4.tcp_max_syn_backlog = 2048
+    net.ipv4.ip_local_port_range = 10000 65000
+    net.core.rmem_max = 16777216
+    net.core.wmem_max = 16777216
+    fs.file-max = 2097152
+    EOF
+    
+    sysctl -p
+
+  # Final setup message
+  - |
+    cat > /opt/boltit/README.txt <<EOF
+    Bolt IT Pilot Environment
+    =========================
+    
+    Instance setup complete! Next steps:
+    
+    1. Copy deployment files to /opt/boltit/deploy/:
+       - docker-compose.yml
+       - token_costs.json
+       - rules_precedence.json
+       - nginx/ directory
+    
+    2. Review and update .env file if needed:
+       sudo vim /opt/boltit/deploy/.env
+    
+    3. Start Bolt IT services:
+       cd /opt/boltit/deploy
+       sudo systemctl start boltit
+    
+    4. Check service status:
+       sudo systemctl status boltit
+       docker compose ps
+    
+    5. View logs:
+       docker compose logs -f
+    
+    6. Access API:
+       curl http://localhost:8000/health
+    
+    For more information, see /opt/boltit/deploy/README.md
+    
+    Provisioned: $(date)
+    Environment: ${environment}
+    Region: ${aws_region}
+    EOF
+    
+    chown ubuntu:ubuntu /opt/boltit/README.txt
+
+  # Log completion
+  - echo "Bolt IT cloud-init setup completed successfully" | tee -a /opt/boltit/logs/setup.log
+  - echo "Instance ready for deployment" | tee -a /opt/boltit/logs/setup.log
+
+# Configure timezone
+timezone: UTC
+
+# Set hostname
+hostname: boltit-${environment}
+
+# Final message
+final_message: "Bolt IT EC2 instance setup completed in $UPTIME seconds"
+
+# Reboot after setup (optional)
+power_state:
+  mode: reboot
+  condition: True
