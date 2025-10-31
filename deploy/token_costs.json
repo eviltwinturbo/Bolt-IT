@@ -1,0 +1,204 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-31",
+  "description": "Token cost configuration for Bolt IT API operations. All costs are deterministic and idempotent.",
+  "currency": "tokens",
+  "operations": {
+    "embed": {
+      "cost_per_call": 10,
+      "description": "Text embedding using sentence-transformers",
+      "unit": "per text input",
+      "notes": "Cost is per embedding call, regardless of text length (up to 512 tokens)"
+    },
+    "classify": {
+      "cost_per_call": 5,
+      "description": "XGBoost classification with explainability",
+      "unit": "per classification",
+      "notes": "Includes category, priority, and feature importance calculation"
+    },
+    "similar": {
+      "cost_per_call": 3,
+      "description": "Vector similarity search using pgvector",
+      "unit": "per search query",
+      "notes": "Cost is per similarity search, returns top K similar tickets"
+    },
+    "triage": {
+      "cost_per_call": 18,
+      "description": "Full triage operation (embed + classify + similar)",
+      "unit": "per ticket",
+      "notes": "Composite operation: embed (10) + classify (5) + similar (3) = 18 tokens",
+      "breakdown": {
+        "embed": 10,
+        "classify": 5,
+        "similar": 3
+      }
+    },
+    "triage_bulk": {
+      "cost_per_ticket": 18,
+      "description": "Bulk triage operation",
+      "unit": "per ticket",
+      "notes": "Same cost as single triage, but processed in batch. Max 100 tickets per request."
+    },
+    "retrain": {
+      "cost_per_job": 1000,
+      "description": "Model retraining pipeline execution",
+      "unit": "per retrain job",
+      "notes": "High cost operation - includes data extraction, training, validation, and artifact packaging"
+    },
+    "promote_model": {
+      "cost_per_call": 50,
+      "description": "Model promotion to production",
+      "unit": "per promotion",
+      "notes": "Includes artifact validation and pointer updates"
+    },
+    "create_kb_entry": {
+      "cost_per_call": 2,
+      "description": "Create knowledge base entry",
+      "unit": "per KB entry",
+      "notes": "Automatic KB generation from resolved tickets"
+    },
+    "auto_apply": {
+      "cost_per_call": 1,
+      "description": "Automatic resolution application",
+      "unit": "per auto-apply action",
+      "notes": "Additional cost when auto-apply threshold is met"
+    },
+    "usage_query": {
+      "cost_per_call": 0,
+      "description": "Query token usage and billing data",
+      "unit": "per query",
+      "notes": "Free operation for billing transparency"
+    },
+    "health_check": {
+      "cost_per_call": 0,
+      "description": "API health check",
+      "unit": "per call",
+      "notes": "Free operation"
+    },
+    "metrics": {
+      "cost_per_call": 0,
+      "description": "Prometheus metrics endpoint",
+      "unit": "per call",
+      "notes": "Free operation for monitoring"
+    }
+  },
+  "subscription_tiers": {
+    "pilot": {
+      "monthly_base_fee_dollars": 0,
+      "included_tokens": 10000,
+      "overage_rate_per_1000_tokens_dollars": 5.0,
+      "rate_limit_requests_per_minute": 60,
+      "features": {
+        "auto_apply": true,
+        "kb_generation": true,
+        "retrain": true,
+        "admin_ui": true,
+        "api_keys": 5,
+        "custom_rules": true
+      }
+    },
+    "starter": {
+      "monthly_base_fee_dollars": 499,
+      "included_tokens": 50000,
+      "overage_rate_per_1000_tokens_dollars": 4.0,
+      "rate_limit_requests_per_minute": 120,
+      "features": {
+        "auto_apply": true,
+        "kb_generation": true,
+        "retrain": true,
+        "admin_ui": true,
+        "api_keys": 10,
+        "custom_rules": true,
+        "priority_support": false
+      }
+    },
+    "professional": {
+      "monthly_base_fee_dollars": 1499,
+      "included_tokens": 200000,
+      "overage_rate_per_1000_tokens_dollars": 3.5,
+      "rate_limit_requests_per_minute": 300,
+      "features": {
+        "auto_apply": true,
+        "kb_generation": true,
+        "retrain": true,
+        "admin_ui": true,
+        "api_keys": 25,
+        "custom_rules": true,
+        "priority_support": true,
+        "custom_models": false
+      }
+    },
+    "enterprise": {
+      "monthly_base_fee_dollars": 0,
+      "included_tokens": 0,
+      "overage_rate_per_1000_tokens_dollars": 0,
+      "rate_limit_requests_per_minute": 1000,
+      "features": {
+        "auto_apply": true,
+        "kb_generation": true,
+        "retrain": true,
+        "admin_ui": true,
+        "api_keys": "unlimited",
+        "custom_rules": true,
+        "priority_support": true,
+        "custom_models": true,
+        "dedicated_instance": true,
+        "sla": "99.9%"
+      },
+      "notes": "Contact sales for custom pricing"
+    }
+  },
+  "billing_rules": {
+    "idempotency": "Requests with same Idempotency-Key are charged only once",
+    "rate_limiting": "Rate-limited requests (429) are not charged",
+    "errors": "Server errors (5xx) are not charged; client errors (4xx) are charged",
+    "refunds": "Token refunds available for proven billing errors within 30 days",
+    "currency_conversion": "1 token = $0.001 USD for overage calculation",
+    "billing_cycle": "Monthly, from 1st to last day of month",
+    "payment_terms": "Net 30 for enterprise, immediate for self-service tiers"
+  },
+  "cost_calculation_examples": [
+    {
+      "scenario": "Single triage request",
+      "operations": ["triage"],
+      "total_tokens": 18,
+      "calculation": "embed(10) + classify(5) + similar(3) = 18"
+    },
+    {
+      "scenario": "Bulk triage with 50 tickets",
+      "operations": ["triage_bulk"],
+      "total_tokens": 900,
+      "calculation": "50 tickets × 18 tokens = 900"
+    },
+    {
+      "scenario": "Triage with auto-apply",
+      "operations": ["triage", "auto_apply"],
+      "total_tokens": 19,
+      "calculation": "triage(18) + auto_apply(1) = 19"
+    },
+    {
+      "scenario": "Triage with KB generation",
+      "operations": ["triage", "create_kb_entry"],
+      "total_tokens": 20,
+      "calculation": "triage(18) + create_kb_entry(2) = 20"
+    },
+    {
+      "scenario": "Monthly retrain job",
+      "operations": ["retrain", "promote_model"],
+      "total_tokens": 1050,
+      "calculation": "retrain(1000) + promote_model(50) = 1050"
+    }
+  ],
+  "audit_and_transparency": {
+    "token_ledger": "Every request creates immutable token_ledger row with request_id",
+    "usage_api": "GET /v1/usage provides detailed breakdown by date, operation, API key",
+    "invoice_generation": "Automated monthly invoices with per-request line items",
+    "reconciliation": "Monthly reconciliation job compares ledger to invoices"
+  },
+  "notes": [
+    "All token costs are final and cannot be changed retroactively",
+    "Token costs may be adjusted with 30 days notice for new requests only",
+    "Pilot customers receive 10,000 free tokens per month during pilot period",
+    "Custom enterprise pricing available - contact sales@cursor.example.com"
+  ]
+}

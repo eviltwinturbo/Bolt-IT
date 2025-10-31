@@ -1,0 +1,110 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2025 Cursor, Inc. All rights reserved.
+
+BOLT IT - AI-Powered IT Ticket Triage SaaS Platform
+
+This software and associated documentation files (the "Software") are the
+proprietary and confidential information of Cursor, Inc. ("Cursor").
+
+RESTRICTIONS:
+
+1. The Software is licensed, not sold. Cursor retains all ownership rights to
+   the Software.
+
+2. No license, right, or interest in any trademark, service mark, logo, or
+   trade name of Cursor is granted under this Agreement.
+
+3. You may not:
+   a. Copy, modify, or create derivative works of the Software
+   b. Distribute, transfer, sublicense, lease, lend, or rent the Software
+   c. Reverse engineer, decompile, disassemble, or attempt to derive the
+      source code of the Software (except as and only to the extent permitted
+      by applicable law)
+   d. Make the functionality of the Software available to multiple users
+      through any means
+   e. Remove, alter, or obscure any proprietary notice on the Software
+
+4. The Software may only be used in accordance with a separate written
+   subscription agreement between you and Cursor.
+
+5. This Software is provided for pilot evaluation or contracted production use
+   only. No end-user support is promised unless explicitly contracted in a
+   separate services agreement.
+
+GOVERNMENT USE:
+
+If the Software is being acquired by or on behalf of the U.S. Government or by
+a U.S. Government prime contractor or subcontractor (at any tier), the
+Government's rights in the Software shall be governed by the applicable Federal
+Acquisition Regulation and agency-specific supplemental regulations.
+
+EXPORT RESTRICTIONS:
+
+The Software may be subject to export controls under U.S. laws and regulations.
+You agree to comply strictly with all such laws and regulations and acknowledge
+that you have the responsibility to obtain such licenses to export, re-export,
+or import as may be required.
+
+WARRANTY DISCLAIMER:
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, SECURITY, AND NONINFRINGEMENT. CURSOR DOES
+NOT WARRANT THAT THE SOFTWARE WILL MEET YOUR REQUIREMENTS OR THAT THE OPERATION
+OF THE SOFTWARE WILL BE UNINTERRUPTED OR ERROR-FREE.
+
+LIMITATION OF LIABILITY:
+
+IN NO EVENT SHALL CURSOR BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT, OR
+CONSEQUENTIAL DAMAGES WHATSOEVER (INCLUDING, WITHOUT LIMITATION, DAMAGES FOR
+LOSS OF BUSINESS PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION,
+OR ANY OTHER PECUNIARY LOSS) ARISING OUT OF THE USE OF OR INABILITY TO USE THE
+SOFTWARE, EVEN IF CURSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+TERMINATION:
+
+This license is effective until terminated. Your rights under this license will
+terminate automatically without notice from Cursor if you fail to comply with
+any term(s) of this license. Upon termination, you shall cease all use of the
+Software and destroy all copies, full or partial, of the Software.
+
+GOVERNING LAW:
+
+This Agreement shall be governed by the laws of the State of California,
+without regard to its conflict of law provisions.
+
+PILOT TERMS:
+
+For pilot deployments, the following additional terms apply:
+
+1. The Software is provided for evaluation purposes during the pilot period
+   only.
+
+2. Cursor makes no commitments regarding future availability, features, or
+   pricing of the Software beyond the pilot period.
+
+3. Pilot participants may not make public statements or disclosures about the
+   Software without prior written consent from Cursor.
+
+4. Cursor may terminate the pilot at any time with 30 days' notice.
+
+5. All feedback, suggestions, and data regarding Software performance become
+   the property of Cursor.
+
+CONTACT:
+
+For licensing inquiries, contact:
+Cursor, Inc.
+Legal Department
+legal@cursor.example.com
+
+For technical support (contracted customers only):
+support@cursor.example.com
+
+---
+
+This license agreement is effective as of the date of first use of the Software.
+
+Last Updated: 2025-10-31
+Version: 1.0.0-pilot

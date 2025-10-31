@@ -1,0 +1,1100 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Bolt IT - AI-Powered IT Ticket Triage API",
+    "version": "1.0.0",
+    "description": "Bolt IT provides AI-powered triage, classification, and resolution suggestions for IT support tickets. All operations are metered with transparent token consumption.",
+    "contact": {
+      "name": "Bolt IT Support",
+      "email": "support@cursor.example.com",
+      "url": "https://boltit.example.com"
+    },
+    "license": {
+      "name": "Proprietary",
+      "url": "https://boltit.example.com/license"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.boltit.example.com",
+      "description": "Production API"
+    },
+    {
+      "url": "https://api-pilot.boltit.example.com",
+      "description": "Pilot Environment"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local Development"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Triage",
+      "description": "Ticket triage and classification operations"
+    },
+    {
+      "name": "Usage",
+      "description": "Token usage and billing information"
+    },
+    {
+      "name": "Admin",
+      "description": "Administrative operations (requires admin API key)"
+    },
+    {
+      "name": "Kiosk",
+      "description": "Public read-only ticket status (no authentication required)"
+    },
+    {
+      "name": "Health",
+      "description": "Service health and monitoring"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "description": "Returns service health status. Free operation (no tokens consumed).",
+        "operationId": "health_check",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/triage": {
+      "post": {
+        "tags": ["Triage"],
+        "summary": "Triage a single ticket",
+        "description": "Performs AI-powered triage on a single ticket: embedding, classification, similarity search, and resolution suggestion. Consumes 18 tokens (embed: 10, classify: 5, similar: 3).",
+        "operationId": "triage_ticket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional idempotency key for duplicate request prevention",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Triage completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/InsufficientTokens"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/v1/triage/bulk": {
+      "post": {
+        "tags": ["Triage"],
+        "summary": "Triage multiple tickets in bulk",
+        "description": "Performs triage on up to 100 tickets. Tokens consumed: 18 per ticket. Total processing time may exceed standard timeout for large batches.",
+        "operationId": "triage_bulk",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkTriageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk triage completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkTriageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/InsufficientTokens"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/usage": {
+      "get": {
+        "tags": ["Usage"],
+        "summary": "Get token usage data",
+        "description": "Returns token usage statistics for the authenticated API key. Free operation (no tokens consumed). Supports date range filtering.",
+        "operationId": "get_usage",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "description": "Start date for usage query (ISO 8601)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "description": "End date for usage query (ISO 8601)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Group results by time period",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["day", "week", "month"],
+              "default": "day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/kiosk/{ticket_id}": {
+      "get": {
+        "tags": ["Kiosk"],
+        "summary": "Get public ticket status",
+        "description": "Returns read-only ticket status for public kiosk display. No authentication required. Sensitive data is redacted.",
+        "operationId": "kiosk_ticket_status",
+        "security": [],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "description": "Ticket ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KioskTicketResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/admin/keys": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create new API key",
+        "description": "Creates a new API key with specified scopes and rate limits. Requires admin privileges. Returns raw key only once.",
+        "operationId": "create_api_key",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API key created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List API keys",
+        "description": "Lists all API keys for the authenticated tenant. Raw keys are not included.",
+        "operationId": "list_api_keys",
+        "responses": {
+          "200": {
+            "description": "API keys retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "api_keys": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApiKeyInfo"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/keys/{key_id}": {
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Revoke API key",
+        "description": "Revokes an API key. The key becomes immediately invalid.",
+        "operationId": "revoke_api_key",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "API key revoked successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/admin/models": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List model artifacts",
+        "description": "Lists all model artifacts with metadata and validation status.",
+        "operationId": "list_models",
+        "responses": {
+          "200": {
+            "description": "Models retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "current_model": {
+                      "$ref": "#/components/schemas/ModelArtifact"
+                    },
+                    "available_models": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ModelArtifact"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/models/promote": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Promote model to production",
+        "description": "Promotes a validated model artifact to production. Consumes 50 tokens.",
+        "operationId": "promote_model",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model promoted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteModelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Prometheus metrics",
+        "description": "Returns Prometheus-formatted metrics for monitoring. Access restricted to monitoring systems. Free operation (no tokens consumed).",
+        "operationId": "metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics retrieved successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "API key for authentication. Obtain from admin panel."
+      }
+    },
+    "schemas": {
+      "TriageRequest": {
+        "type": "object",
+        "required": ["ticket_text"],
+        "properties": {
+          "ticket_text": {
+            "type": "string",
+            "description": "The ticket description or problem statement",
+            "minLength": 10,
+            "maxLength": 10000,
+            "example": "My laptop screen is flickering and the keyboard spacebar is stuck"
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Optional asset ID for tracking",
+            "example": "LAPTOP-1234"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Optional user ID who submitted the ticket",
+            "example": "user@example.com"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional metadata for the ticket",
+            "additionalProperties": true
+          }
+        }
+      },
+      "TriageResponse": {
+        "type": "object",
+        "required": ["request_id", "ticket_id", "category", "priority", "confidence", "tokens_consumed"],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique request ID for idempotency and tracking"
+          },
+          "ticket_id": {
+            "type": "string",
+            "description": "Generated ticket ID"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["hardware", "software", "network", "access", "incident", "general"],
+            "description": "Classified ticket category"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"],
+            "description": "Assigned priority"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Classification confidence score"
+          },
+          "suggested_fix": {
+            "type": "string",
+            "description": "AI-generated resolution suggestion",
+            "nullable": true
+          },
+          "similar_tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimilarTicket"
+            },
+            "description": "List of similar historical tickets"
+          },
+          "is_duplicate": {
+            "type": "boolean",
+            "description": "Whether this is likely a duplicate of an existing ticket"
+          },
+          "auto_applied": {
+            "type": "boolean",
+            "description": "Whether the suggested fix was automatically applied"
+          },
+          "explainability": {
+            "$ref": "#/components/schemas/Explainability"
+          },
+          "model_version": {
+            "type": "string",
+            "description": "Model version used for classification"
+          },
+          "tokens_consumed": {
+            "type": "integer",
+            "description": "Total tokens consumed for this request"
+          },
+          "processing_time_ms": {
+            "type": "integer",
+            "description": "Total processing time in milliseconds"
+          }
+        }
+      },
+      "BulkTriageRequest": {
+        "type": "object",
+        "required": ["tickets"],
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TriageRequest"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Array of tickets to triage (max 100)"
+          }
+        }
+      },
+      "BulkTriageResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TriageResponse"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "total_tickets": {
+                "type": "integer"
+              },
+              "successful": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "total_tokens_consumed": {
+                "type": "integer"
+              },
+              "processing_time_ms": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "SimilarTicket": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string"
+          },
+          "similarity_score": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "category": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Explainability": {
+        "type": "object",
+        "properties": {
+          "top_features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "importance": {
+                  "type": "number",
+                  "format": "float"
+                }
+              }
+            },
+            "description": "Top features contributing to classification"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Human-readable explanation of classification decision"
+          },
+          "confidence_breakdown": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Confidence scores for each category"
+          }
+        }
+      },
+      "UsageResponse": {
+        "type": "object",
+        "properties": {
+          "api_key_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "period": {
+            "type": "object",
+            "properties": {
+              "start_date": {
+                "type": "string",
+                "format": "date"
+              },
+              "end_date": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          },
+          "total_tokens_consumed": {
+            "type": "integer"
+          },
+          "total_requests": {
+            "type": "integer"
+          },
+          "breakdown_by_operation": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "requests": {
+                  "type": "integer"
+                },
+                "tokens": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "daily_usage": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "tokens": {
+                  "type": "integer"
+                },
+                "requests": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "KioskTicketResponse": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "in_progress", "resolved", "closed"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "estimated_resolution_time": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "CreateApiKeyRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Descriptive name for the API key"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["read", "write", "admin"]
+            },
+            "default": ["read", "write"]
+          },
+          "rate_limit": {
+            "type": "integer",
+            "description": "Requests per minute",
+            "default": 60
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional expiration date",
+            "nullable": true
+          }
+        }
+      },
+      "ApiKeyResponse": {
+        "type": "object",
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "api_key": {
+            "type": "string",
+            "description": "Raw API key - shown only once!"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiKeyInfo": {
+        "type": "object",
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "ModelArtifact": {
+        "type": "object",
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "accuracy": {
+                "type": "number"
+              },
+              "f1_score": {
+                "type": "number"
+              },
+              "precision": {
+                "type": "number"
+              },
+              "recall": {
+                "type": "number"
+              }
+            }
+          },
+          "validation_status": {
+            "type": "string",
+            "enum": ["pending", "validated", "failed"]
+          },
+          "is_production": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PromoteModelRequest": {
+        "type": "object",
+        "required": ["artifact_id"],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "description": "Model artifact ID to promote"
+          }
+        }
+      },
+      "PromoteModelResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "artifact_id": {
+            "type": "string"
+          },
+          "previous_version": {
+            "type": "string"
+          },
+          "new_version": {
+            "type": "string"
+          },
+          "promoted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tokens_consumed": {
+            "type": "integer"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "degraded", "unhealthy"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "type": "integer"
+          },
+          "dependencies": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy"]
+              },
+              "model_service": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy"]
+              },
+              "redis": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy"]
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error", "status"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "status": {
+            "type": "integer",
+            "description": "HTTP status code"
+          },
+          "code": {
+            "type": "string",
+            "description": "Machine-readable error code"
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional error details",
+            "additionalProperties": true
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Request ID for tracking"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Invalid request: ticket_text is required",
+              "status": 400,
+              "code": "INVALID_REQUEST"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid API key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Unauthorized: Invalid API key",
+              "status": 401,
+              "code": "INVALID_API_KEY"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Insufficient permissions",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Forbidden: Admin privileges required",
+              "status": 403,
+              "code": "INSUFFICIENT_PERMISSIONS"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Not found: Ticket does not exist",
+              "status": 404,
+              "code": "NOT_FOUND"
+            }
+          }
+        }
+      },
+      "InsufficientTokens": {
+        "description": "Insufficient tokens",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Payment required: Insufficient tokens",
+              "status": 402,
+              "code": "INSUFFICIENT_TOKENS",
+              "details": {
+                "tokens_required": 18,
+                "tokens_available": 5
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limit exceeded",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Too many requests",
+              "status": 429,
+              "code": "RATE_LIMIT_EXCEEDED",
+              "details": {
+                "retry_after_seconds": 60
+              }
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds until rate limit resets",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "Internal server error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Internal server error",
+              "status": 500,
+              "code": "INTERNAL_ERROR",
+              "request_id": "550e8400-e29b-41d4-a716-446655440000"
+            }
+          }
+        }
+      }
+    }
+  }
+}

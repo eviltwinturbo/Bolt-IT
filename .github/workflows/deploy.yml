@@ -1,0 +1,285 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - pilot
+          - staging
+          - production
+      image_tag:
+        description: 'Docker image tag to deploy (default: latest)'
+        required: false
+        default: 'latest'
+      skip_tests:
+        description: 'Skip smoke tests after deployment'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-boltit-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get instance ID
+        id: get-instance
+        run: |
+          if [ "${{ inputs.environment }}" == "pilot" ]; then
+            echo "instance_id=${{ secrets.PILOT_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+            echo "api_url=${{ secrets.PILOT_API_URL }}" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.environment }}" == "staging" ]; then
+            echo "instance_id=${{ secrets.STAGING_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+            echo "api_url=${{ secrets.STAGING_API_URL }}" >> $GITHUB_OUTPUT
+          else
+            echo "instance_id=${{ secrets.PROD_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+            echo "api_url=${{ secrets.PROD_API_URL }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Backup current deployment
+        run: |
+          INSTANCE_ID="${{ steps.get-instance.outputs.instance_id }}"
+          
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "cd /opt/boltit/deploy",
+              "docker compose ps > deployment_state_$(date +%Y%m%d_%H%M%S).txt",
+              "docker images | grep boltit > images_backup_$(date +%Y%m%d_%H%M%S).txt"
+            ]'
+
+      - name: Deploy new version
+        id: deploy
+        run: |
+          INSTANCE_ID="${{ steps.get-instance.outputs.instance_id }}"
+          IMAGE_TAG="${{ inputs.image_tag }}"
+          
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              \"cd /opt/boltit/deploy\",
+              \"echo 'Pulling images with tag: $IMAGE_TAG'\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}\",
+              \"export ECR_API_URI=${{ env.ECR_REGISTRY }}/boltit-api:$IMAGE_TAG\",
+              \"export ECR_MODEL_URI=${{ env.ECR_REGISTRY }}/boltit-model:$IMAGE_TAG\",
+              \"export ECR_WORKER_URI=${{ env.ECR_REGISTRY }}/boltit-worker:$IMAGE_TAG\",
+              \"docker compose pull\",
+              \"docker compose up -d --remove-orphans\",
+              \"echo 'Waiting for services to start...'\",
+              \"sleep 15\",
+              \"docker compose ps\",
+              \"docker compose logs --tail=50\"
+            ]" \
+            --output text \
+            --query 'Command.CommandId')
+          
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          echo "SSM Command ID: $COMMAND_ID"
+          
+          # Wait for command to complete
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --max-attempts 60 \
+            --delay 5
+          
+          # Get command output
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+          
+          # Check status
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'Status' \
+            --output text)
+          
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::Deployment command failed with status: $STATUS"
+            exit 1
+          fi
+
+      - name: Run smoke tests
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          API_URL="${{ steps.get-instance.outputs.api_url }}"
+          
+          echo "Running smoke tests against $API_URL"
+          
+          # Wait for services to stabilize
+          sleep 30
+          
+          # Health check
+          for i in {1..5}; do
+            if curl -f -s "$API_URL/health"; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "Attempt $i failed, retrying..."
+              sleep 10
+            fi
+            
+            if [ $i -eq 5 ]; then
+              echo "::error::Health check failed after 5 attempts"
+              exit 1
+            fi
+          done
+          
+          # Version check
+          VERSION=$(curl -s "$API_URL/v1/version" | jq -r '.version')
+          echo "Deployed version: $VERSION"
+          
+          # Metrics check
+          if curl -f -s "$API_URL/metrics" | grep -q "triage_requests_total"; then
+            echo "✅ Metrics endpoint responding"
+          else
+            echo "::warning::Metrics endpoint not responding correctly"
+          fi
+          
+          echo "All smoke tests passed!"
+
+      - name: Verify deployment
+        run: |
+          INSTANCE_ID="${{ steps.get-instance.outputs.instance_id }}"
+          
+          # Check container status
+          CONTAINERS_UP=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["cd /opt/boltit/deploy && docker compose ps --format json | jq -r .State"]' \
+            --query 'Command.CommandId' \
+            --output text)
+          
+          aws ssm wait command-executed \
+            --command-id "$CONTAINERS_UP" \
+            --instance-id "$INSTANCE_ID"
+          
+          # Get container states
+          STATES=$(aws ssm get-command-invocation \
+            --command-id "$CONTAINERS_UP" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'StandardOutputContent' \
+            --output text)
+          
+          echo "Container states: $STATES"
+          
+          # Check if any container is not running
+          if echo "$STATES" | grep -qv "running"; then
+            echo "::error::Some containers are not in running state"
+            exit 1
+          fi
+          
+          echo "✅ All containers are running"
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## ✅ Deployment Successful
+          
+          **Environment:** ${{ inputs.environment }}
+          **Image Tag:** ${{ inputs.image_tag }}
+          **Deployed by:** ${{ github.actor }}
+          **Commit:** ${{ github.sha }}
+          **API URL:** ${{ steps.get-instance.outputs.api_url }}
+          
+          ### Next Steps
+          1. Monitor CloudWatch logs for any errors
+          2. Check Prometheus metrics dashboard
+          3. Verify token metering is working correctly
+          4. Run full integration test suite if needed
+          
+          ### Rollback Command
+          If issues are detected, rollback with:
+          \`\`\`bash
+          gh workflow run deploy.yml -f environment=${{ inputs.environment }} -f image_tag=previous
+          \`\`\`
+          EOF
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed! Initiating rollback..."
+          
+          INSTANCE_ID="${{ steps.get-instance.outputs.instance_id }}"
+          
+          ROLLBACK_CMD=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "cd /opt/boltit/deploy",
+              "echo Rolling back to previous version...",
+              "docker compose down --timeout 30",
+              "export ECR_API_URI=${{ env.ECR_REGISTRY }}/boltit-api:previous",
+              "export ECR_MODEL_URI=${{ env.ECR_REGISTRY }}/boltit-model:previous",  
+              "export ECR_WORKER_URI=${{ env.ECR_REGISTRY }}/boltit-worker:previous",
+              "docker compose up -d",
+              "sleep 10",
+              "docker compose ps"
+            ]' \
+            --query 'Command.CommandId' \
+            --output text)
+          
+          echo "Rollback command ID: $ROLLBACK_CMD"
+          
+          aws ssm wait command-executed \
+            --command-id "$ROLLBACK_CMD" \
+            --instance-id "$INSTANCE_ID"
+          
+          # Verify rollback
+          curl -f "${{ steps.get-instance.outputs.api_url }}/health" || echo "::error::Rollback verification failed!"
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## ❌ Deployment Failed
+          
+          **Environment:** ${{ inputs.environment }}
+          **Image Tag:** ${{ inputs.image_tag }}
+          **Failed Step:** ${{ job.status }}
+          
+          ### Troubleshooting
+          1. Check SSM command output for errors
+          2. Review CloudWatch logs: /aws/boltit/${{ inputs.environment }}/
+          3. SSH to instance and check Docker logs:
+             \`\`\`bash
+             ssh ubuntu@<instance-ip>
+             cd /opt/boltit/deploy
+             docker compose logs
+             \`\`\`
+          4. Verify ECR images exist with tag: ${{ inputs.image_tag }}
+          
+          ### Rollback
+          An automatic rollback has been attempted. Verify services are running:
+          \`\`\`bash
+          curl ${{ steps.get-instance.outputs.api_url }}/health
+          \`\`\`
+          EOF

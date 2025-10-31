@@ -1,0 +1,59 @@
+# Bolt IT - Code Ownership
+# 
+# This file defines code ownership for the Bolt IT repository.
+# Each line is a file pattern followed by one or more owners.
+# Owners are automatically requested for review when someone opens a PR that modifies code they own.
+
+# Global owners (fallback)
+* @cursor-devops @cursor-product
+
+# API Layer
+/api/ @cursor-backend
+/api/app/auth.py @cursor-backend @cursor-security
+/api/app/billing.py @cursor-backend @cursor-product
+
+# ML Model Service
+/model/ @cursor-ml
+/model/service/explainability.py @cursor-ml @cursor-backend
+
+# Worker & Retrain Pipeline
+/worker/ @cursor-ml @cursor-devops
+/worker/jobs/retrain.py @cursor-ml
+/worker/jobs/promote_model.py @cursor-ml @cursor-devops
+
+# Infrastructure & Deployment
+/infra/ @cursor-devops
+/deploy/ @cursor-devops
+/deploy/cloud-init.yml @cursor-devops @cursor-security
+/.github/workflows/ @cursor-devops
+
+# Security-sensitive files
+/infra/iam_policy.json @cursor-security @cursor-devops
+/infra/kms_policy.json @cursor-security @cursor-devops
+/docs/security/ @cursor-security
+
+# Configuration files
+/deploy/token_costs.json @cursor-product @cursor-backend
+/deploy/rules_precedence.json @cursor-product @cursor-ml
+
+# Documentation
+/docs/ @cursor-product
+/docs/runbooks/ @cursor-devops @cursor-product
+/docs/security/ @cursor-security @cursor-product
+/docs/procurement-one-pager.md @cursor-product
+
+# Database migrations
+/alembic/ @cursor-backend @cursor-devops
+
+# Scripts
+/scripts/ @cursor-devops
+
+# Testing
+/api/tests/ @cursor-backend
+/model/tests/ @cursor-ml
+/worker/tests/ @cursor-ml @cursor-devops
+
+# Project metadata
+/README.md @cursor-product
+/CONTRIBUTING.md @cursor-product @cursor-devops
+/LICENSE @cursor-product

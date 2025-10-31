@@ -1,0 +1,62 @@
+[Unit]
+Description=Bolt IT Docker Compose Service
+Documentation=https://github.com/cursor/boltit
+Requires=docker.service
+After=docker.service network-online.target cloud-final.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/boltit/deploy
+User=root
+Group=root
+
+# Load environment variables from .env file
+EnvironmentFile=/opt/boltit/deploy/.env
+
+# Health check before start
+ExecStartPre=/bin/bash -c 'systemctl is-active docker.service || exit 1'
+
+# Authenticate with ECR before pulling
+ExecStartPre=/bin/bash -c 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin $(echo ${ECR_API_URI} | cut -d/ -f1) || true'
+
+# Pull latest images
+ExecStartPre=/usr/bin/docker compose pull --quiet
+
+# Start all services defined in docker-compose.yml
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+
+# Health check after start
+ExecStartPost=/bin/bash -c 'sleep 10 && curl -f http://localhost:8000/health || echo "Warning: API health check failed"'
+
+# Stop gracefully with timeout
+ExecStop=/usr/bin/docker compose down --timeout 30
+
+# Reload = pull new images and restart
+ExecReload=/usr/bin/docker compose pull --quiet
+ExecReload=/usr/bin/docker compose up -d --remove-orphans
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=5min
+StartLimitBurst=3
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/opt/boltit
+PrivateTmp=yes
+NoNewPrivileges=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=boltit
+
+[Install]
+WantedBy=multi-user.target
